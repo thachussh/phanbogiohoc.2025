@@ -11,7 +11,7 @@
         .sub-table { margin-left: 20px; border: none; }
         .sub-table td { border: none; }
         .total { font-weight: bold; background-color: #e6f3ff; }
-        #error_msg { color: red; display: none; }
+        #error_msg, #min_hour_error { color: red; display: none; }
     </style>
 </head>
 <body>
@@ -26,6 +26,7 @@
         <p>Tự học (tiết): <span id="self_study_hours">0</span></p>
         <p>Gợi ý: Cần thêm <span id="suggested_hours">0</span> giờ để đạt tổng <span id="target_total">0</span> giờ học tập.</p>
         <p id="error_msg">Lỗi: Tổng tín chỉ không khớp!</p>
+        <p id="min_hour_error">Lỗi: Tối thiểu 15 giờ lý thuyết/tín chỉ hoặc 30 giờ thực hành/tín chỉ không được đáp ứng!</p>
     </div>
     
     <table id="main-table">
@@ -220,9 +221,9 @@
             const totalTuHoc = parseInt(document.getElementById('grand_total_tu_hoc').textContent) || 0;
             document.getElementById('self_study_hours').textContent = totalTuHoc;
 
-            // Tính gợi ý giờ (giả sử 45 giờ/tín chỉ)
+            // Tính gợi ý giờ (50 giờ/tín chỉ theo quy định)
             const totalCredits = parseInt(document.getElementById('total_credits').value) || 0;
-            const targetTotal = totalCredits * 45; // Hệ số 45, chỉnh sửa nếu cần
+            const targetTotal = totalCredits * 50; // Cập nhật từ 45 thành 50 giờ/tín chỉ
             const currentTotal = parseInt(document.getElementById('grand_total').textContent) || 0;
             const suggested = Math.max(0, targetTotal - currentTotal);
             document.getElementById('suggested_hours').textContent = suggested;
@@ -236,6 +237,22 @@
                 errorMsg.style.display = 'block';
             } else {
                 errorMsg.style.display = 'none';
+            }
+
+            // Kiểm tra yêu cầu tối thiểu giờ giảng dạy
+            const totalTheoryHours = parseInt(document.getElementById('total_giang_day_ly_thuyet').textContent) || 0;
+            const totalPracticeHours = parseInt(document.getElementById('total_giang_day_thuc_hanh').textContent) || 0;
+            const minHourError = document.getElementById('min_hour_error');
+            if (totalCredits > 0) {
+                const minTheory = theoryCredits * 15;
+                const minPractice = practiceCredits * 30;
+                if (totalTheoryHours < minTheory || totalPracticeHours < minPractice) {
+                    minHourError.style.display = 'block';
+                } else {
+                    minHourError.style.display = 'none';
+                }
+            } else {
+                minHourError.style.display = 'none';
             }
         }
 
