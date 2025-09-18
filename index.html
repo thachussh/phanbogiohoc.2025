@@ -1,287 +1,358 @@
-<!DOCTYPE html>
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phân Bổ Các Loại Giờ</title>
     <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        input { width: 60px; }
-        .sub-table { margin-left: 20px; border: none; }
-        .sub-table td { border: none; }
-        .total { font-weight: bold; background-color: #e6f3ff; }
-        #error_msg, #min_hour_error { color: red; display: none; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .info-section {
+            margin-bottom: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .suggestion {
+            color: green;
+            font-style: italic;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .download-btn:hover {
+            background-color: #0056b3;
+        }
+        .editable:hover {
+            background-color: #f9f9f9;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <h2>Phân Bổ Các Loại Giờ</h2>
-    
-    <!-- Phần thông tin học phần -->
-    <div id="info-hoc-phan">
-        <h3>Thông tin học phần</h3>
-        <p>Số tín chỉ: <input type="number" id="total_credits" value="0" min="0" onchange="updateInfo()"></p>
-        <p>Lý thuyết (TC): <input type="number" id="theory_credits" value="0" min="0" onchange="updateInfo()"></p>
-        <p>Thực hành/Thí nghiệm/Thảo luận (TC): <input type="number" id="practice_credits" value="0" min="0" onchange="updateInfo()"></p>
-        <p>Tự học (tiết): <span id="self_study_hours">0</span></p>
-        <p>Gợi ý: Cần thêm <span id="suggested_hours">0</span> giờ để đạt tổng <span id="target_total">0</span> giờ học tập.</p>
-        <p id="error_msg">Lỗi: Tổng tín chỉ không khớp!</p>
-        <p id="min_hour_error">Lỗi: Tối thiểu 15 giờ lý thuyết/tín chỉ hoặc 30 giờ thực hành/tín chỉ không được đáp ứng!</p>
+    <h1>Phân Bổ Các Loại Giờ</h1>
+
+    <div class="info-section">
+        <h2>Thông tin học phần</h2>
+        <p><strong>Số tín chỉ:</strong> <span class="editable" onclick="editField(this)">0</span></p>
+        <p><strong>Lý thuyết (TC):</strong> <span class="editable" onclick="editField(this)">0</span></p>
+        <p><strong>Thực hành/Thí nghiệm/Thảo luận (TC):</strong> <span class="editable" onclick="editField(this)">0</span></p>
+        <p><strong>Tự học (tiết):</strong> <span class="editable" onclick="editField(this)">0</span></p>
+        <p class="suggestion"><strong>Gợi ý:</strong> Cần thêm <span id="suggestion-hours">0</span> giờ để đạt tổng <span id="total-hours">0</span> giờ học tập.</p>
+        <p class="error"><strong>Lỗi:</strong> Tổng tín chỉ không khớp!</p>
     </div>
-    
-    <table id="main-table">
+
+    <h2>Phân bổ cụ thể</h2>
+    <table>
         <thead>
             <tr>
                 <th>Phân bổ các loại giờ</th>
-                <th>Lý thuyết (giờ)</th>
-                <th>Thực hành (giờ)</th>
-                <th>Tự học/Tự nghiên cứu (giờ)</th>
+                <th>Lý thuyết</th>
+                <th>Thực hành/Thí nghiệm/Thảo luận</th>
+                <th>Tự học, tự nghiên cứu</th>
                 <th>Tổng (giờ)</th>
             </tr>
         </thead>
         <tbody>
-            <!-- Phần Số giờ giảng dạy -->
-            <tr class="total">
-                <td><strong>Số giờ giảng dạy (lý thuyết/thực hành)</strong></td>
-                <td id="total_giang_day_ly_thuyet">0</td>
-                <td id="total_giang_day_thuc_hanh">0</td>
-                <td id="total_giang_day_tu_hoc">0</td>
-                <td id="total_giang_day">0</td>
+            <tr>
+                <td><strong>Số giờ giảng dạy trực diện, trực tuyến</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
             </tr>
             <tr>
-                <td colspan="5">
-                    <table class="sub-table">
-                        <tr>
-                            <td>Trực diện (tại phòng học)</td>
-                            <td><input type="number" id="truc_dien_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_dien_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_dien_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_truc_dien">0</td>
-                        </tr>
-                        <tr>
-                            <td>Trực tuyến đồng bộ</td>
-                            <td><input type="number" id="truc_tuyen_dong_bo_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_tuyen_dong_bo_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_tuyen_dong_bo_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_truc_tuyen_dong_bo">0</td>
-                        </tr>
-                        <tr>
-                            <td>Trực tuyến không đồng bộ</td>
-                            <td><input type="number" id="truc_tuyen_khong_dong_bo_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_tuyen_khong_dong_bo_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="truc_tuyen_khong_dong_bo_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_truc_tuyen_khong_dong_bo">0</td>
-                        </tr>
-                        <tr>
-                            <td>Đi thực tế, trải nghiệm</td>
-                            <td><input type="number" id="di_thuc_te_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="di_thuc_te_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="di_thuc_te_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_di_thuc_te">0</td>
-                        </tr>
-                    </table>
-                </td>
+                <td>Trực diện (tại phòng học)</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-direct-classroom">0</td>
             </tr>
-
-            <!-- Phần Số giờ tự học và khác -->
-            <tr class="total">
+            <tr>
+                <td>Trực tuyến (đồng bộ hoặc không đồng bộ)</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-online">0</td>
+            </tr>
+            <tr>
+                <td>Đi thực tế, trải nghiệm</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-field-trip">0</td>
+            </tr>
+            <tr>
+                <td>LMS (có hướng dẫn)</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-lms-guided">0</td>
+            </tr>
+            <tr>
+                <td><strong>Tổng Số giờ giảng dạy trực diện, trực tuyến</strong></td>
+                <td id="total-direct-theory">0</td>
+                <td id="total-direct-practical">0</td>
+                <td id="total-direct-selfstudy">0</td>
+                <td id="total-direct">0</td>
+            </tr>
+            <tr>
                 <td><strong>Số giờ tự học và khác</strong></td>
-                <td id="total_tu_hoc_ly_thuyet">0</td>
-                <td id="total_tu_hoc_thuc_hanh">0</td>
-                <td id="total_tu_hoc_tu_hoc">0</td>
-                <td id="total_tu_hoc">0</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
             </tr>
             <tr>
-                <td colspan="5">
-                    <table class="sub-table">
-                        <tr>
-                            <td>Tự học, tự nghiên cứu</td>
-                            <td><input type="number" id="tu_hoc_nghien_cuu_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="tu_hoc_nghien_cuu_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="tu_hoc_nghien_cuu_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_tu_hoc_nghien_cuu">0</td>
-                        </tr>
-                        <tr>
-                            <td>Làm việc nhóm</td>
-                            <td><input type="number" id="lam_viec_nhom_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="lam_viec_nhom_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="lam_viec_nhom_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_lam_viec_nhom">0</td>
-                        </tr>
-                        <tr>
-                            <td>Đi thực tế, trải nghiệm</td>
-                            <td><input type="number" id="di_thuc_te_tu_hoc_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="di_thuc_te_tu_hoc_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="di_thuc_te_tu_hoc_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_di_thuc_te_tu_hoc">0</td>
-                        </tr>
-                        <tr>
-                            <td>Thực hành</td>
-                            <td><input type="number" id="thuc_hanh_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="thuc_hanh_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="thuc_hanh_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_thuc_hanh">0</td>
-                        </tr>
-                        <tr>
-                            <td>Ôn thi, kiểm tra, đánh giá</td>
-                            <td><input type="number" id="on_thi_kiem_tra_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="on_thi_kiem_tra_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="on_thi_kiem_tra_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_on_thi_kiem_tra">0</td>
-                        </tr>
-                        <tr>
-                            <td>Hoạt động khác (ghi rõ): <input type="text" id="hoat_dong_khac_mo_ta" placeholder="Mô tả" style="width: 200px;"></td>
-                            <td><input type="number" id="hoat_dong_khac_ly_thuyet" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="hoat_dong_khac_thuc_hanh" value="0" min="0" onchange="updateTotals()"></td>
-                            <td><input type="number" id="hoat_dong_khac_tu_hoc" value="0" min="0" onchange="updateTotals()"></td>
-                            <td id="total_hoat_dong_khac">0</td>
-                        </tr>
-                    </table>
-                </td>
+                <td>Tự học, tự nghiên cứu</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-selfstudy">0</td>
             </tr>
-
-            <!-- Tổng chung -->
-            <tr class="total">
+            <tr>
+                <td>Làm việc nhóm</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-groupwork">0</td>
+            </tr>
+            <tr>
+                <td>Hoạt động học tập trên LMS</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-lms-activities">0</td>
+            </tr>
+            <tr>
+                <td>Đi thực tế, trải nghiệm</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-field-experience">0</td>
+            </tr>
+            <tr>
+                <td>Thực hành</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-practical">0</td>
+            </tr>
+            <tr>
+                <td>Ôn thi, kiểm tra, đánh giá</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-assessment">0</td>
+            </tr>
+            <tr>
+                <td>Hoạt động khác (ghi rõ)</td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td><span class="editable" onclick="editField(this)">0</span></td>
+                <td id="total-other">0</td>
+            </tr>
+            <tr>
+                <td><strong>Tổng Số giờ tự học và khác</strong></td>
+                <td id="total-selfstudy-theory">0</td>
+                <td id="total-selfstudy-practical">0</td>
+                <td id="total-selfstudy-selfstudy">0</td>
+                <td id="total-selfstudy-all">0</td>
+            </tr>
+            <tr>
                 <td><strong>Tổng</strong></td>
-                <td id="grand_total_ly_thuyet">0</td>
-                <td id="grand_total_thuc_hanh">0</td>
-                <td id="grand_total_tu_hoc">0</td>
-                <td id="grand_total">0</td>
+                <td id="grand-total-theory">0</td>
+                <td id="grand-total-practical">0</td>
+                <td id="grand-total-selfstudy">0</td>
+                <td id="grand-total">0</td>
             </tr>
         </tbody>
     </table>
 
-    <button onclick="exportToWord()">Tải file Word</button>
+    <a href="#" class="download-btn" onclick="downloadWord()">Tải file Word</a>
 
     <script>
-        function updateSubTotal(idPrefix) {
-            const lyThuyet = parseInt(document.getElementById(idPrefix + '_ly_thuyet').value) || 0;
-            const thucHanh = parseInt(document.getElementById(idPrefix + '_thuc_hanh').value) || 0;
-            const tuHoc = parseInt(document.getElementById(idPrefix + '_tu_hoc').value) || 0;
-            const total = lyThuyet + thucHanh + tuHoc;
-            document.getElementById('total_' + idPrefix).textContent = total;
-            return { lyThuyet, thucHanh, tuHoc, total };
-        }
-
-        function updateGiangDayTotals() {
-            const rows = ['truc_dien', 'truc_tuyen_dong_bo', 'truc_tuyen_khong_dong_bo', 'di_thuc_te'];
-            let sumLy = 0, sumThuc = 0, sumTu = 0, sumTotal = 0;
-            rows.forEach(row => {
-                const data = updateSubTotal(row);
-                sumLy += data.lyThuyet;
-                sumThuc += data.thucHanh;
-                sumTu += data.tuHoc;
-                sumTotal += data.total;
-            });
-            document.getElementById('total_giang_day_ly_thuyet').textContent = sumLy;
-            document.getElementById('total_giang_day_thuc_hanh').textContent = sumThuc;
-            document.getElementById('total_giang_day_tu_hoc').textContent = sumTu;
-            document.getElementById('total_giang_day').textContent = sumTotal;
-        }
-
-        function updateTuHocTotals() {
-            const rows = ['tu_hoc_nghien_cuu', 'lam_viec_nhom', 'di_thuc_te_tu_hoc', 'thuc_hanh', 'on_thi_kiem_tra', 'hoat_dong_khac'];
-            let sumLy = 0, sumThuc = 0, sumTu = 0, sumTotal = 0;
-            rows.forEach(row => {
-                const data = updateSubTotal(row);
-                sumLy += data.lyThuyet;
-                sumThuc += data.thucHanh;
-                sumTu += data.tuHoc;
-                sumTotal += data.total;
-            });
-            document.getElementById('total_tu_hoc_ly_thuyet').textContent = sumLy;
-            document.getElementById('total_tu_hoc_thuc_hanh').textContent = sumThuc;
-            document.getElementById('total_tu_hoc_tu_hoc').textContent = sumTu;
-            document.getElementById('total_tu_hoc').textContent = sumTotal;
-        }
-
-        function updateGrandTotal() {
-            const giangDayLy = parseInt(document.getElementById('total_giang_day_ly_thuyet').textContent) || 0;
-            const giangDayThuc = parseInt(document.getElementById('total_giang_day_thuc_hanh').textContent) || 0;
-            const giangDayTu = parseInt(document.getElementById('total_giang_day_tu_hoc').textContent) || 0;
-            const tuHocLy = parseInt(document.getElementById('total_tu_hoc_ly_thuyet').textContent) || 0;
-            const tuHocThuc = parseInt(document.getElementById('total_tu_hoc_thuc_hanh').textContent) || 0;
-            const tuHocTu = parseInt(document.getElementById('total_tu_hoc_tu_hoc').textContent) || 0;
-
-            document.getElementById('grand_total_ly_thuyet').textContent = giangDayLy + tuHocLy;
-            document.getElementById('grand_total_thuc_hanh').textContent = giangDayThuc + tuHocThuc;
-            document.getElementById('grand_total_tu_hoc').textContent = giangDayTu + tuHocTu;
-            document.getElementById('grand_total').textContent = (giangDayLy + giangDayThuc + giangDayTu) + (tuHocLy + tuHocThuc + tuHocTu);
-        }
-
-        function updateTotals() {
-            updateGiangDayTotals();
-            updateTuHocTotals();
-            updateGrandTotal();
-            updateInfo(); // Cập nhật thông tin học phần sau khi tổng thay đổi
-        }
-
-        function updateInfo() {
-            // Cập nhật tự học (tiết) từ tổng tự học
-            const totalTuHoc = parseInt(document.getElementById('grand_total_tu_hoc').textContent) || 0;
-            document.getElementById('self_study_hours').textContent = totalTuHoc;
-
-            // Tính gợi ý giờ (50 giờ/tín chỉ theo quy định)
-            const totalCredits = parseInt(document.getElementById('total_credits').value) || 0;
-            const targetTotal = totalCredits * 50; // Cập nhật từ 45 thành 50 giờ/tín chỉ
-            const currentTotal = parseInt(document.getElementById('grand_total').textContent) || 0;
-            const suggested = Math.max(0, targetTotal - currentTotal);
-            document.getElementById('suggested_hours').textContent = suggested;
-            document.getElementById('target_total').textContent = targetTotal;
-
-            // Kiểm tra lỗi tổng tín chỉ
-            const theoryCredits = parseInt(document.getElementById('theory_credits').value) || 0;
-            const practiceCredits = parseInt(document.getElementById('practice_credits').value) || 0;
-            const errorMsg = document.getElementById('error_msg');
-            if (totalCredits !== theoryCredits + practiceCredits) {
-                errorMsg.style.display = 'block';
-            } else {
-                errorMsg.style.display = 'none';
-            }
-
-            // Kiểm tra yêu cầu tối thiểu giờ giảng dạy
-            const totalTheoryHours = parseInt(document.getElementById('total_giang_day_ly_thuyet').textContent) || 0;
-            const totalPracticeHours = parseInt(document.getElementById('total_giang_day_thuc_hanh').textContent) || 0;
-            const minHourError = document.getElementById('min_hour_error');
-            if (totalCredits > 0) {
-                const minTheory = theoryCredits * 15;
-                const minPractice = practiceCredits * 30;
-                if (totalTheoryHours < minTheory || totalPracticeHours < minPractice) {
-                    minHourError.style.display = 'block';
-                } else {
-                    minHourError.style.display = 'none';
+        // Function to allow editing of table cells
+        function editField(element) {
+            const originalValue = element.innerText;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.value = originalValue;
+            input.style.width = '60px';
+            input.onblur = function() {
+                element.innerText = input.value;
+                updateTotals();
+            };
+            input.onkeypress = function(e) {
+                if (e.key === 'Enter') {
+                    element.innerText = input.value;
+                    updateTotals();
                 }
-            } else {
-                minHourError.style.display = 'none';
-            }
+            };
+            element.innerHTML = '';
+            element.appendChild(input);
+            input.focus();
         }
 
-        // Gán sự kiện khi thay đổi input
-        document.addEventListener('DOMContentLoaded', function() {
-            const inputs = document.querySelectorAll('input[type="number"]');
-            inputs.forEach(input => {
-                input.addEventListener('input', updateTotals);
+        // Function to calculate totals
+        function updateTotals() {
+            const rows = [
+                ['direct-classroom', ['total-direct-classroom']],
+                ['online', ['total-online']],
+                ['field-trip', ['total-field-trip']],
+                ['lms-guided', ['total-lms-guided']],
+                ['selfstudy', ['total-selfstudy']],
+                ['groupwork', ['total-groupwork']],
+                ['lms-activities', ['total-lms-activities']],
+                ['field-experience', ['total-field-experience']],
+                ['practical', ['total-practical']],
+                ['assessment', ['total-assessment']],
+                ['other', ['total-other']]
+            ];
+
+            let totalDirectTheory = 0, totalDirectPractical = 0, totalDirectSelfstudy = 0;
+            let totalSelfstudyTheory = 0, totalSelfstudyPractical = 0, totalSelfstudySelfstudy = 0;
+
+            rows.forEach(row => {
+                const [prefix, totalIds] = row;
+                const theory = parseFloat(document.querySelector(`#${prefix}-theory`)?.innerText) || 0;
+                const practical = parseFloat(document.querySelector(`#${prefix}-practical`)?.innerText) || 0;
+                const selfstudy = parseFloat(document.querySelector(`#${prefix}-selfstudy`)?.innerText) || 0;
+                const total = theory + practical + selfstudy;
+                totalIds.forEach(id => {
+                    document.getElementById(id).innerText = total;
+                });
+
+                if (['direct-classroom', 'online', 'field-trip', 'lms-guided'].includes(prefix)) {
+                    totalDirectTheory += theory;
+                    totalDirectPractical += practical;
+                    totalDirectSelfstudy += selfstudy;
+                } else {
+                    totalSelfstudyTheory += theory;
+                    totalSelfstudyPractical += practical;
+                    totalSelfstudySelfstudy += selfstudy;
+                }
             });
-            // Khởi tạo tổng ban đầu
-            updateTotals();
-        });
 
-        // Hàm xuất file Word (export toàn bộ nội dung trang)
-        function exportToWord() {
-            const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' " +
-                           "xmlns:w='urn:schemas-microsoft-com:office:word' " +
-                           "xmlns='http://www.w3.org/TR/REC-html40'>" +
-                           "<head><meta charset='utf-8'><title>Phân Bổ Các Loại Giờ</title></head><body>";
-            const footer = "</body></html>";
-            const sourceHTML = header + document.body.innerHTML + footer;
-            const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
-            const fileDownload = document.createElement("a");
-            document.body.appendChild(fileDownload);
-            fileDownload.href = source;
-            fileDownload.download = 'phan_bo_gio.doc';
-            fileDownload.click();
-            document.body.removeChild(fileDownload);
+            // Update direct teaching totals
+            document.getElementById('total-direct-theory').innerText = totalDirectTheory;
+            document.getElementById('total-direct-practical').innerText = totalDirectPractical;
+            document.getElementById('total-direct-selfstudy').innerText = totalDirectSelfstudy;
+            document.getElementById('total-direct').innerText = totalDirectTheory + totalDirectPractical + totalDirectSelfstudy;
+
+            // Update self-study totals
+            document.getElementById('total-selfstudy-theory').innerText = totalSelfstudyTheory;
+            document.getElementById('total-selfstudy-practical').innerText = totalSelfstudyPractical;
+            document.getElementById('total-selfstudy-selfstudy').innerText = totalSelfstudySelfstudy;
+            document.getElementById('total-selfstudy-all').innerText = totalSelfstudyTheory + totalSelfstudyPractical + totalSelfstudySelfstudy;
+
+            // Update grand totals
+            const grandTotalTheory = totalDirectTheory + totalSelfstudyTheory;
+            const grandTotalPractical = totalDirectPractical + totalSelfstudyPractical;
+            const grandTotalSelfstudy = totalDirectSelfstudy + totalSelfstudySelfstudy;
+            const grandTotal = grandTotalTheory + grandTotalPractical + grandTotalSelfstudy;
+
+            document.getElementById('grand-total-theory').innerText = grandTotalTheory;
+            document.getElementById('grand-total-practical').innerText = grandTotalPractical;
+            document.getElementById('grand-total-selfstudy').innerText = grandTotalSelfstudy;
+            document.getElementById('grand-total').innerText = grandTotal;
+
+            // Update suggestion and error messages
+            const requiredHours = parseFloat(document.querySelector('.info-section span:nth-child(1)').innerText) * 15 || 0;
+            document.getElementById('total-hours').innerText = requiredHours;
+            document.getElementById('suggestion-hours').innerText = requiredHours - grandTotal;
+            document.querySelector('.error').style.display = grandTotal !== requiredHours ? 'block' : 'none';
         }
+
+        // Function to download as Word document
+        function downloadWord() {
+            const content = document.body.innerHTML;
+            const blob = new Blob([`
+                <!DOCTYPE html>
+                <html lang="vi">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Phân Bổ Các Loại Giờ</title>
+                </head>
+                <body>
+                    ${content}
+                </body>
+                </html>
+            `], { type: 'application/msword' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'Phan_Bo_Cac_Loai_Gio.doc';
+            link.click();
+        }
+
+        // Initialize totals on page load
+        document.addEventListener('DOMContentLoaded', updateTotals);
     </script>
 </body>
 </html>
