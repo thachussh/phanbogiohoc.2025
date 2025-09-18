@@ -1,358 +1,425 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+```html
+<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phân Bổ Các Loại Giờ</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            line-height: 1.6;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        .info-section {
-            margin-bottom: 20px;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 10px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-        .error {
-            color: red;
-            font-weight: bold;
-        }
-        .suggestion {
-            color: green;
-            font-style: italic;
-        }
-        .download-btn {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #007BFF;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            margin-top: 10px;
-        }
-        .download-btn:hover {
-            background-color: #0056b3;
-        }
-        .editable:hover {
-            background-color: #f9f9f9;
-            cursor: pointer;
-        }
-    </style>
+    <title>Phân bổ các loại giờ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
-<body>
-    <h1>Phân Bổ Các Loại Giờ</h1>
-
-    <div class="info-section">
-        <h2>Thông tin học phần</h2>
-        <p><strong>Số tín chỉ:</strong> <span class="editable" onclick="editField(this)">0</span></p>
-        <p><strong>Lý thuyết (TC):</strong> <span class="editable" onclick="editField(this)">0</span></p>
-        <p><strong>Thực hành/Thí nghiệm/Thảo luận (TC):</strong> <span class="editable" onclick="editField(this)">0</span></p>
-        <p><strong>Tự học (tiết):</strong> <span class="editable" onclick="editField(this)">0</span></p>
-        <p class="suggestion"><strong>Gợi ý:</strong> Cần thêm <span id="suggestion-hours">0</span> giờ để đạt tổng <span id="total-hours">0</span> giờ học tập.</p>
-        <p class="error"><strong>Lỗi:</strong> Tổng tín chỉ không khớp!</p>
+<body class="bg-gray-100 p-6">
+    <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
+        <h1 class="text-2xl font-bold mb-4 text-center">Phân Bổ Các Loại Giờ</h1>
+        <!-- Phần nhập liệu -->
+        <div class="mb-6">
+            <h2 class="text-lg font-semibold mb-2">Thông tin học phần</h2>
+            <div class="mb-4">
+                <label class="block text-lg font-bold text-gray-700">Số tín chỉ:</label>
+                <input type="number" id="totalCredits" min="1" value="1" class="mt-1 block w-full sm:w-1/3 border border-gray-300 rounded-md p-2 text-lg" oninput="updateTable()">
+            </div>
+            <div class="ml-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Lý thuyết (TC):</label>
+                    <input type="number" id="theoryCredits" min="0" value="0" class="mt-1 block w-1/12 border border-gray-300 rounded-md p-2" oninput="updateTable()">
+                </div>
+                <div class="mt-2">
+                    <label class="block text-sm font-medium text-gray-700">Thực hành/Thí nghiệm/Thảo luận (TC):</label>
+                    <input type="number" id="practicalCredits" min="0" value="0" class="mt-1 block w-1/12 border border-gray-300 rounded-md p-2" oninput="updateTable()">
+                </div>
+                <div class="mt-2">
+                    <label class="block text-sm font-medium text-gray-700">Tự học (tiết):</label>
+                    <span id="selfStudyHours" class="mt-1 block w-1/12 text-gray-700">0</span>
+                </div>
+            </div>
+            <p id="suggestion" class="text-yellow-600 mt-2">Gợi ý: Cần thêm <span id="hoursNeeded">0</span> giờ để đạt tổng <span id="totalHours">0</span> giờ học tập.</p>
+            <p id="errorMessage" class="text-red-500 mt-2 hidden">Lỗi: Tổng tín chỉ không khớp!</p>
+        </div>
+        <!-- Bảng phân bổ giờ -->
+        <div>
+            <h2 class="text-lg font-semibold mb-2">Phân bổ cụ thể</h2>
+            <table class="min-w-full border-collapse border border-gray-300">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="border border-gray-300 p-2 text-left">Phân bổ các loại giờ</th>
+                        <th class="border border-gray-300 p-2 text-center">Lý thuyết</th>
+                        <th class="border border-gray-300 p-2 text-center">Thực hành/Thí nghiệm/Thảo luận</th>
+                        <th class="border border-gray-300 p-2 text-center">Tự học, tự nghiên cứu</th>
+                        <th class="border border-gray-300 p-2 text-center">Tổng (giờ)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="border border-gray-300 p-2 font-bold" colspan="5">Số giờ giảng dạy</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Trực diện (tại phòng học)</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="directTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="directPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="directSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="directTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Trực tuyến đồng bộ</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="onlineTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="onlinePractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="onlineSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="onlineTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Trực tuyến không đồng bộ</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="fieldTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Đi thực tế, trải nghiệm</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsGuideTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsGuidePractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsGuideSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="lmsGuideTotal">0</td>
+                    </tr>
+                    <tr class="bg-gray-100 font-semibold">
+                        <td class="border border-gray-300 p-2">Tổng Số giờ giảng dạy</td>
+                        <td class="border border-gray-300 p-2 text-center" id="directOnlineTheoryTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="directOnlinePracticalTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="directOnlineSelfStudyTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="directOnlineTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 font-bold" colspan="5">Số giờ tự học và khác</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Tự học, tự nghiên cứu</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="selfStudyTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="selfStudyPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="selfStudySelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="selfStudyTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Làm việc nhóm</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="groupTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="groupPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="groupSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="groupTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Hoạt động học tập trên LMS</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsActivityTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsActivityPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="lmsActivitySelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="lmsActivityTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Đi thực tế, trải nghiệm</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldStudyTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldStudyPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="fieldStudySelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="fieldStudyTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Thực hành</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="practiceTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="practicePractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="practiceSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="practiceTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Ôn thi, kiểm tra, đánh giá</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="examTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="examPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="examSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="examTotal">0</td>
+                    </tr>
+                    <tr>
+                        <td class="border border-gray-300 p-2 pl-4">Hoạt động khác (ghi rõ)</td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="otherTheory" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="otherPractical" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center"><input type="number" id="otherSelfStudy" min="0" value="0" class="w-20 border border-gray-300 rounded p-1" oninput="updateFromTable()"></td>
+                        <td class="border border-gray-300 p-2 text-center" id="otherTotal">0</td>
+                    </tr>
+                    <tr class="bg-gray-100 font-semibold">
+                        <td class="border border-gray-300 p-2">Tổng Số giờ tự học và khác</td>
+                        <td class="border border-gray-300 p-2 text-center" id="selfOtherTheoryTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="selfOtherPracticalTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="selfOtherSelfStudyTotal">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="selfOtherTotal">0</td>
+                    </tr>
+                    <tr class="bg-gray-100 font-semibold">
+                        <td class="border border-gray-300 p-2">Tổng</td>
+                        <td class="border border-gray-300 p-2 text-center" id="totalTheory">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="totalPractical">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="totalSelfStudy">0</td>
+                        <td class="border border-gray-300 p-2 text-center" id="totalAll">0</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="mt-4 flex justify-center">
+                <button onclick="downloadWord()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Tải file Word</button>
+            </div>
+        </div>
     </div>
-
-    <h2>Phân bổ cụ thể</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Phân bổ các loại giờ</th>
-                <th>Lý thuyết</th>
-                <th>Thực hành/Thí nghiệm/Thảo luận</th>
-                <th>Tự học, tự nghiên cứu</th>
-                <th>Tổng (giờ)</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td><strong>Số giờ giảng dạy trực diện, trực tuyến</strong></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>Trực diện (tại phòng học)</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-direct-classroom">0</td>
-            </tr>
-            <tr>
-                <td>Trực tuyến (đồng bộ hoặc không đồng bộ)</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-online">0</td>
-            </tr>
-            <tr>
-                <td>Đi thực tế, trải nghiệm</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-field-trip">0</td>
-            </tr>
-            <tr>
-                <td>LMS (có hướng dẫn)</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-lms-guided">0</td>
-            </tr>
-            <tr>
-                <td><strong>Tổng Số giờ giảng dạy trực diện, trực tuyến</strong></td>
-                <td id="total-direct-theory">0</td>
-                <td id="total-direct-practical">0</td>
-                <td id="total-direct-selfstudy">0</td>
-                <td id="total-direct">0</td>
-            </tr>
-            <tr>
-                <td><strong>Số giờ tự học và khác</strong></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-            </tr>
-            <tr>
-                <td>Tự học, tự nghiên cứu</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-selfstudy">0</td>
-            </tr>
-            <tr>
-                <td>Làm việc nhóm</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-groupwork">0</td>
-            </tr>
-            <tr>
-                <td>Hoạt động học tập trên LMS</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-lms-activities">0</td>
-            </tr>
-            <tr>
-                <td>Đi thực tế, trải nghiệm</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-field-experience">0</td>
-            </tr>
-            <tr>
-                <td>Thực hành</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-practical">0</td>
-            </tr>
-            <tr>
-                <td>Ôn thi, kiểm tra, đánh giá</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-assessment">0</td>
-            </tr>
-            <tr>
-                <td>Hoạt động khác (ghi rõ)</td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td><span class="editable" onclick="editField(this)">0</span></td>
-                <td id="total-other">0</td>
-            </tr>
-            <tr>
-                <td><strong>Tổng Số giờ tự học và khác</strong></td>
-                <td id="total-selfstudy-theory">0</td>
-                <td id="total-selfstudy-practical">0</td>
-                <td id="total-selfstudy-selfstudy">0</td>
-                <td id="total-selfstudy-all">0</td>
-            </tr>
-            <tr>
-                <td><strong>Tổng</strong></td>
-                <td id="grand-total-theory">0</td>
-                <td id="grand-total-practical">0</td>
-                <td id="grand-total-selfstudy">0</td>
-                <td id="grand-total">0</td>
-            </tr>
-        </tbody>
-    </table>
-
-    <a href="#" class="download-btn" onclick="downloadWord()">Tải file Word</a>
-
     <script>
-        // Function to allow editing of table cells
-        function editField(element) {
-            const originalValue = element.innerText;
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.value = originalValue;
-            input.style.width = '60px';
-            input.onblur = function() {
-                element.innerText = input.value;
-                updateTotals();
-            };
-            input.onkeypress = function(e) {
-                if (e.key === 'Enter') {
-                    element.innerText = input.value;
-                    updateTotals();
-                }
-            };
-            element.innerHTML = '';
-            element.appendChild(input);
-            input.focus();
+        // Hàm tính toán khi thay đổi ô nhập liệu trên cùng
+        function updateTable() {
+            const totalCredits = parseInt(document.getElementById('totalCredits').value) || 0;
+            const theoryCredits = parseInt(document.getElementById('theoryCredits').value) || 0;
+            const practicalCredits = parseInt(document.getElementById('practicalCredits').value) || 0;
+            const theorySections = theoryCredits * 15;
+            const practicalSections = practicalCredits * 30;
+            const totalHours = totalCredits * 50;
+            const selfStudySections = totalCredits * 30; // 30 tiết/tín chỉ (mặc định ban đầu)
+            const teachingHours = (theorySections * 50 / 60) + (practicalSections * 50 / 60);
+            const currentTotalHours = teachingHours + (selfStudySections * 50 / 60);
+            const hoursNeeded = Math.max(0, totalHours - currentTotalHours);
+            const errorMessage = document.getElementById('errorMessage');
+            if (theoryCredits + practicalCredits !== totalCredits) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = `Lỗi: Tổng tín chỉ không khớp (${theoryCredits} + ${practicalCredits} ≠ ${totalCredits})!`;
+                resetTable();
+                document.getElementById('selfStudyHours').textContent = 0;
+                document.getElementById('hoursNeeded').textContent = 0;
+                document.getElementById('totalHours').textContent = totalHours;
+                return;
+            } else {
+                errorMessage.classList.add('hidden');
+            }
+            document.getElementById('selfStudyHours').textContent = selfStudySections;
+            document.getElementById('hoursNeeded').textContent = hoursNeeded.toFixed(1);
+            document.getElementById('totalHours').textContent = totalHours;
+            document.getElementById('directTheory').value = theorySections;
+            document.getElementById('directPractical').value = practicalSections;
+            document.getElementById('directSelfStudy').value = 0;
+            document.getElementById('onlineTheory').value = 0;
+            document.getElementById('onlinePractical').value = 0;
+            document.getElementById('onlineSelfStudy').value = 0;
+            document.getElementById('lmsGuideTheory').value = 0;
+            document.getElementById('lmsGuidePractical').value = 0;
+            document.getElementById('lmsGuideSelfStudy').value = 0;
+            document.getElementById('fieldTheory').value = 0;
+            document.getElementById('fieldPractical').value = 0;
+            document.getElementById('fieldSelfStudy').value = 0;
+            document.getElementById('selfStudyTheory').value = 0;
+            document.getElementById('selfStudyPractical').value = 0;
+            document.getElementById('selfStudySelfStudy').value = Math.round(selfStudySections * 0.6);
+            document.getElementById('groupTheory').value = 0;
+            document.getElementById('groupPractical').value = 0;
+            document.getElementById('groupSelfStudy').value = Math.round(selfStudySections * 0.1);
+            document.getElementById('lmsActivityTheory').value = 0;
+            document.getElementById('lmsActivityPractical').value = 0;
+            document.getElementById('lmsActivitySelfStudy').value = Math.round(selfStudySections * 0.1);
+            document.getElementById('fieldStudyTheory').value = 0;
+            document.getElementById('fieldStudyPractical').value = 0;
+            document.getElementById('fieldStudySelfStudy').value = 0;
+            document.getElementById('practiceTheory').value = 0;
+            document.getElementById('practicePractical').value = 0;
+            document.getElementById('practiceSelfStudy').value = 0;
+            document.getElementById('examTheory').value = 0;
+            document.getElementById('examPractical').value = 0;
+            document.getElementById('examSelfStudy').value = Math.round(selfStudySections * 0.1);
+            document.getElementById('otherTheory').value = 0;
+            document.getElementById('otherPractical').value = 0;
+            document.getElementById('otherSelfStudy').value = Math.round(selfStudySections * 0.1);
+            updateTotals();
         }
-
-        // Function to calculate totals
-        function updateTotals() {
-            const rows = [
-                ['direct-classroom', ['total-direct-classroom']],
-                ['online', ['total-online']],
-                ['field-trip', ['total-field-trip']],
-                ['lms-guided', ['total-lms-guided']],
-                ['selfstudy', ['total-selfstudy']],
-                ['groupwork', ['total-groupwork']],
-                ['lms-activities', ['total-lms-activities']],
-                ['field-experience', ['total-field-experience']],
-                ['practical', ['total-practical']],
-                ['assessment', ['total-assessment']],
-                ['other', ['total-other']]
-            ];
-
-            let totalDirectTheory = 0, totalDirectPractical = 0, totalDirectSelfstudy = 0;
-            let totalSelfstudyTheory = 0, totalSelfstudyPractical = 0, totalSelfstudySelfstudy = 0;
-
-            rows.forEach(row => {
-                const [prefix, totalIds] = row;
-                const theory = parseFloat(document.querySelector(`#${prefix}-theory`)?.innerText) || 0;
-                const practical = parseFloat(document.querySelector(`#${prefix}-practical`)?.innerText) || 0;
-                const selfstudy = parseFloat(document.querySelector(`#${prefix}-selfstudy`)?.innerText) || 0;
-                const total = theory + practical + selfstudy;
-                totalIds.forEach(id => {
-                    document.getElementById(id).innerText = total;
-                });
-
-                if (['direct-classroom', 'online', 'field-trip', 'lms-guided'].includes(prefix)) {
-                    totalDirectTheory += theory;
-                    totalDirectPractical += practical;
-                    totalDirectSelfstudy += selfstudy;
-                } else {
-                    totalSelfstudyTheory += theory;
-                    totalSelfstudyPractical += practical;
-                    totalSelfstudySelfstudy += selfstudy;
-                }
+        // Hàm tính toán khi thay đổi giá trị trong bảng
+        function updateFromTable() {
+            const totalCredits = parseInt(document.getElementById('totalCredits').value) || 0;
+            const theoryCredits = parseInt(document.getElementById('theoryCredits').value) || 0;
+            const practicalCredits = parseInt(document.getElementById('practicalCredits').value) || 0;
+            const totalHours = totalCredits * 50;
+            const fields = ['direct', 'online', 'lmsGuide', 'field', 'selfStudy', 'group', 'lmsActivity', 'fieldStudy', 'practice', 'exam', 'other'];
+            let totalTheory = 0, totalPractical = 0, totalSelfStudy = 0;
+            fields.forEach(field => {
+                const theory = parseInt(document.getElementById(`${field}Theory`).value) || 0;
+                const practical = parseInt(document.getElementById(`${field}Practical`).value) || 0;
+                const selfStudy = parseInt(document.getElementById(`${field}SelfStudy`).value) || 0;
+                const total = (theory * 50 / 60) + (practical * 50 / 60) + (selfStudy * 50 / 60);
+                document.getElementById(`${field}Total`).textContent = Math.round(total);
+                totalTheory += theory;
+                totalPractical += practical;
+                totalSelfStudy += selfStudy;
             });
-
-            // Update direct teaching totals
-            document.getElementById('total-direct-theory').innerText = totalDirectTheory;
-            document.getElementById('total-direct-practical').innerText = totalDirectPractical;
-            document.getElementById('total-direct-selfstudy').innerText = totalDirectSelfstudy;
-            document.getElementById('total-direct').innerText = totalDirectTheory + totalDirectPractical + totalDirectSelfstudy;
-
-            // Update self-study totals
-            document.getElementById('total-selfstudy-theory').innerText = totalSelfstudyTheory;
-            document.getElementById('total-selfstudy-practical').innerText = totalSelfstudyPractical;
-            document.getElementById('total-selfstudy-selfstudy').innerText = totalSelfstudySelfstudy;
-            document.getElementById('total-selfstudy-all').innerText = totalSelfstudyTheory + totalSelfstudyPractical + totalSelfstudySelfstudy;
-
-            // Update grand totals
-            const grandTotalTheory = totalDirectTheory + totalSelfstudyTheory;
-            const grandTotalPractical = totalDirectPractical + totalSelfstudyPractical;
-            const grandTotalSelfstudy = totalDirectSelfstudy + totalSelfstudySelfstudy;
-            const grandTotal = grandTotalTheory + grandTotalPractical + grandTotalSelfstudy;
-
-            document.getElementById('grand-total-theory').innerText = grandTotalTheory;
-            document.getElementById('grand-total-practical').innerText = grandTotalPractical;
-            document.getElementById('grand-total-selfstudy').innerText = grandTotalSelfstudy;
-            document.getElementById('grand-total').innerText = grandTotal;
-
-            // Update suggestion and error messages
-            const requiredHours = parseFloat(document.querySelector('.info-section span:nth-child(1)').innerText) * 15 || 0;
-            document.getElementById('total-hours').innerText = requiredHours;
-            document.getElementById('suggestion-hours').innerText = requiredHours - grandTotal;
-            document.querySelector('.error').style.display = grandTotal !== requiredHours ? 'block' : 'none';
+            document.getElementById('totalTheory').textContent = totalTheory;
+            document.getElementById('totalPractical').textContent = totalPractical;
+            document.getElementById('totalSelfStudy').textContent = totalSelfStudy;
+            const totalHoursCalculated = (totalTheory * 50 / 60) + (totalPractical * 50 / 60) + (totalSelfStudy * 50 / 60);
+            document.getElementById('totalAll').textContent = Math.round(totalHoursCalculated);
+            document.getElementById('hoursNeeded').textContent = (totalHours - totalHoursCalculated).toFixed(1);
+            document.getElementById('totalHours').textContent = totalHours;
+            const errorMessage = document.getElementById('errorMessage');
+            if (theoryCredits + practicalCredits !== totalCredits) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = `Lỗi: Tổng tín chỉ không khớp (${theoryCredits} + ${practicalCredits} ≠ ${totalCredits})!`;
+            } else if (Math.round(totalHoursCalculated) !== totalHours) {
+                errorMessage.classList.remove('hidden');
+                errorMessage.textContent = `Lỗi: Tổng giờ không khớp với số tín chỉ (1 TC = 50 giờ)! Tính được: ${Math.round(totalHoursCalculated)} giờ, Nên là: ${totalHours} giờ`;
+            } else {
+                errorMessage.classList.add('hidden');
+            }
+            const directOnlineTheory = (parseInt(document.getElementById('directTheory').value) || 0) + (parseInt(document.getElementById('onlineTheory').value) || 0) + (parseInt(document.getElementById('fieldTheory').value) || 0) + (parseInt(document.getElementById('lmsGuideTheory').value) || 0);
+            const directOnlinePractical = (parseInt(document.getElementById('directPractical').value) || 0) + (parseInt(document.getElementById('onlinePractical').value) || 0) + (parseInt(document.getElementById('fieldPractical').value) || 0) + (parseInt(document.getElementById('lmsGuidePractical').value) || 0);
+            const directOnlineSelfStudy = (parseInt(document.getElementById('directSelfStudy').value) || 0) + (parseInt(document.getElementById('onlineSelfStudy').value) || 0) + (parseInt(document.getElementById('fieldSelfStudy').value) || 0) + (parseInt(document.getElementById('lmsGuideSelfStudy').value) || 0);
+            const directOnlineTotal = (directOnlineTheory * 50 / 60) + (directOnlinePractical * 50 / 60) + (directOnlineSelfStudy * 50 / 60);
+            document.getElementById('directOnlineTheoryTotal').textContent = directOnlineTheory;
+            document.getElementById('directOnlinePracticalTotal').textContent = directOnlinePractical;
+            document.getElementById('directOnlineSelfStudyTotal').textContent = directOnlineSelfStudy;
+            document.getElementById('directOnlineTotal').textContent = Math.round(directOnlineTotal);
+            const selfOtherTheory = (parseInt(document.getElementById('selfStudyTheory').value) || 0) + (parseInt(document.getElementById('groupTheory').value) || 0) + (parseInt(document.getElementById('lmsActivityTheory').value) || 0) + (parseInt(document.getElementById('fieldStudyTheory').value) || 0) + (parseInt(document.getElementById('practiceTheory').value) || 0) + (parseInt(document.getElementById('examTheory').value) || 0) + (parseInt(document.getElementById('otherTheory').value) || 0);
+            const selfOtherPractical = (parseInt(document.getElementById('selfStudyPractical').value) || 0) + (parseInt(document.getElementById('groupPractical').value) || 0) + (parseInt(document.getElementById('lmsActivityPractical').value) || 0) + (parseInt(document.getElementById('fieldStudyPractical').value) || 0) + (parseInt(document.getElementById('practicePractical').value) || 0) + (parseInt(document.getElementById('examPractical').value) || 0) + (parseInt(document.getElementById('otherPractical').value) || 0);
+            const selfOtherSelfStudy = (parseInt(document.getElementById('selfStudySelfStudy').value) || 0) + (parseInt(document.getElementById('groupSelfStudy').value) || 0) + (parseInt(document.getElementById('lmsActivitySelfStudy').value) || 0) + (parseInt(document.getElementById('fieldStudySelfStudy').value) || 0) + (parseInt(document.getElementById('practiceSelfStudy').value) || 0) + (parseInt(document.getElementById('examSelfStudy').value) || 0) + (parseInt(document.getElementById('otherSelfStudy').value) || 0);
+            const selfOtherTotal = (selfOtherTheory * 50 / 60) + (selfOtherPractical * 50 / 60) + (selfOtherSelfStudy * 50 / 60);
+            document.getElementById('selfOtherTheoryTotal').textContent = selfOtherTheory;
+            document.getElementById('selfOtherPracticalTotal').textContent = selfOtherPractical;
+            document.getElementById('selfOtherSelfStudyTotal').textContent = selfOtherSelfStudy;
+            document.getElementById('selfOtherTotal').textContent = Math.round(selfOtherTotal);
+            const selfStudyFields = ['selfStudy', 'group', 'lmsActivity', 'fieldStudy', 'practice', 'exam', 'other'];
+            let totalSelfStudySections = 0;
+            selfStudyFields.forEach(field => {
+                totalSelfStudySections += parseInt(document.getElementById(`${field}SelfStudy`).value) || 0;
+            });
+            document.getElementById('selfStudyHours').textContent = totalSelfStudySections;
         }
-
-        // Function to download as Word document
+        // Hàm reset bảng
+        function resetTable() {
+            const fields = ['direct', 'online', 'lmsGuide', 'field', 'selfStudy', 'group', 'lmsActivity', 'fieldStudy', 'practice', 'exam', 'other'];
+            fields.forEach(field => {
+                document.getElementById(`${field}Theory`).value = 0;
+                document.getElementById(`${field}Practical`).value = 0;
+                document.getElementById(`${field}SelfStudy`).value = 0;
+                document.getElementById(`${field}Total`).textContent = 0;
+            });
+            document.getElementById('directOnlineTheoryTotal').textContent = 0;
+            document.getElementById('directOnlinePracticalTotal').textContent = 0;
+            document.getElementById('directOnlineSelfStudyTotal').textContent = 0;
+            document.getElementById('directOnlineTotal').textContent = 0;
+            document.getElementById('selfOtherTheoryTotal').textContent = 0;
+            document.getElementById('selfOtherPracticalTotal').textContent = 0;
+            document.getElementById('selfOtherSelfStudyTotal').textContent = 0;
+            document.getElementById('selfOtherTotal').textContent = 0;
+            document.getElementById('totalTheory').textContent = 0;
+            document.getElementById('totalPractical').textContent = 0;
+            document.getElementById('totalSelfStudy').textContent = 0;
+            document.getElementById('totalAll').textContent = 0;
+        }
+        // Hàm tính tổng
+        function updateTotals() {
+            const totalCredits = parseInt(document.getElementById('totalCredits').value) || 0;
+            const totalHours = totalCredits * 50;
+            const fields = ['direct', 'online', 'lmsGuide', 'field', 'selfStudy', 'group', 'lmsActivity', 'fieldStudy', 'practice', 'exam', 'other'];
+            let totalTheory = 0, totalPractical = 0, totalSelfStudy = 0;
+            fields.forEach(field => {
+                const theory = parseInt(document.getElementById(`${field}Theory`).value) || 0;
+                const practical = parseInt(document.getElementById(`${field}Practical`).value) || 0;
+                const selfStudy = parseInt(document.getElementById(`${field}SelfStudy`).value) || 0;
+                const total = (theory * 50 / 60) + (practical * 50 / 60) + (selfStudy * 50 / 60);
+                document.getElementById(`${field}Total`).textContent = Math.round(total);
+                totalTheory += theory;
+                totalPractical += practical;
+                totalSelfStudy += selfStudy;
+            });
+            document.getElementById('totalTheory').textContent = totalTheory;
+            document.getElementById('totalPractical').textContent = totalPractical;
+            document.getElementById('totalSelfStudy').textContent = totalSelfStudy;
+            const totalHoursCalculated = (totalTheory * 50 / 60) + (totalPractical * 50 / 60) + (totalSelfStudy * 50 / 60);
+            document.getElementById('totalAll').textContent = Math.round(totalHoursCalculated);
+            const directOnlineTheory = (parseInt(document.getElementById('directTheory').value) || 0) + (parseInt(document.getElementById('onlineTheory').value) || 0) + (parseInt(document.getElementById('fieldTheory').value) || 0) + (parseInt(document.getElementById('lmsGuideTheory').value) || 0);
+            const directOnlinePractical = (parseInt(document.getElementById('directPractical').value) || 0) + (parseInt(document.getElementById('onlinePractical').value) || 0) + (parseInt(document.getElementById('fieldPractical').value) || 0) + (parseInt(document.getElementById('lmsGuidePractical').value) || 0);
+            const directOnlineSelfStudy = (parseInt(document.getElementById('directSelfStudy').value) || 0) + (parseInt(document.getElementById('onlineSelfStudy').value) || 0) + (parseInt(document.getElementById('fieldSelfStudy').value) || 0) + (parseInt(document.getElementById('lmsGuideSelfStudy').value) || 0);
+            const directOnlineTotal = (directOnlineTheory * 50 / 60) + (directOnlinePractical * 50 / 60) + (directOnlineSelfStudy * 50 / 60);
+            document.getElementById('directOnlineTheoryTotal').textContent = directOnlineTheory;
+            document.getElementById('directOnlinePracticalTotal').textContent = directOnlinePractical;
+            document.getElementById('directOnlineSelfStudyTotal').textContent = directOnlineSelfStudy;
+            document.getElementById('directOnlineTotal').textContent = Math.round(directOnlineTotal);
+            const selfOtherTheory = (parseInt(document.getElementById('selfStudyTheory').value) || 0) + (parseInt(document.getElementById('groupTheory').value) || 0) + (parseInt(document.getElementById('lmsActivityTheory').value) || 0) + (parseInt(document.getElementById('fieldStudyTheory').value) || 0) + (parseInt(document.getElementById('practiceTheory').value) || 0) + (parseInt(document.getElementById('examTheory').value) || 0) + (parseInt(document.getElementById('otherTheory').value) || 0);
+            const selfOtherPractical = (parseInt(document.getElementById('selfStudyPractical').value) || 0) + (parseInt(document.getElementById('groupPractical').value) || 0) + (parseInt(document.getElementById('lmsActivityPractical').value) || 0) + (parseInt(document.getElementById('fieldStudyPractical').value) || 0) + (parseInt(document.getElementById('practicePractical').value) || 0) + (parseInt(document.getElementById('examPractical').value) || 0) + (parseInt(document.getElementById('otherPractical').value) || 0);
+            const selfOtherSelfStudy = (parseInt(document.getElementById('selfStudySelfStudy').value) || 0) + (parseInt(document.getElementById('groupSelfStudy').value) || 0) + (parseInt(document.getElementById('lmsActivitySelfStudy').value) || 0) + (parseInt(document.getElementById('fieldStudySelfStudy').value) || 0) + (parseInt(document.getElementById('practiceSelfStudy').value) || 0) + (parseInt(document.getElementById('examSelfStudy').value) || 0) + (parseInt(document.getElementById('otherSelfStudy').value) || 0);
+            const selfOtherTotal = (selfOtherTheory * 50 / 60) + (selfOtherPractical * 50 / 60) + (selfOtherSelfStudy * 50 / 60);
+            document.getElementById('selfOtherTheoryTotal').textContent = selfOtherTheory;
+            document.getElementById('selfOtherPracticalTotal').textContent = selfOtherPractical;
+            document.getElementById('selfOtherSelfStudyTotal').textContent = selfOtherSelfStudy;
+            document.getElementById('selfOtherTotal').textContent = Math.round(selfOtherTotal);
+            const selfStudyFields = ['selfStudy', 'group', 'lmsActivity', 'fieldStudy', 'practice', 'exam', 'other'];
+            let totalSelfStudySections = 0;
+            selfStudyFields.forEach(field => {
+                totalSelfStudySections += parseInt(document.getElementById(`${field}SelfStudy`).value) || 0;
+            });
+            document.getElementById('selfStudyHours').textContent = totalSelfStudySections;
+        }
+        // Hàm tải file Word
         function downloadWord() {
-            const content = document.body.innerHTML;
-            const blob = new Blob([`
-                <!DOCTYPE html>
-                <html lang="vi">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Phân Bổ Các Loại Giờ</title>
-                </head>
-                <body>
-                    ${content}
-                </body>
+            const errorMessage = document.getElementById('errorMessage');
+            if (!errorMessage.classList.contains('hidden')) {
+                alert("Vui lòng sửa lỗi trong bảng trước khi tải file Word!");
+                return;
+            }
+            const htmlContent = `
+                <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            body { font-family: 'Times New Roman', sans-serif; }
+                            h1 { font-size: 24px; font-weight: bold; text-align: center; }
+                            table { width: 100%; border-collapse: collapse; }
+                            th, td { border: 1px solid black; padding: 8px; text-align: left; }
+                            th { background-color: #f2f2f2; text-align: center; }
+                            .total-row td { font-weight: bold; }
+                            .bold { font-weight: bold; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Phân Bổ Các Loại Giờ</h1>
+                        <p>Số tín chỉ: ${document.getElementById('totalCredits').value || 0}, trong đó: Lý thuyết: ${document.getElementById('theoryCredits').value || 0} TC, Thực hành/Thí nghiệm/Thảo luận: ${document.getElementById('practicalCredits').value || 0} TC, Tự học: ${document.getElementById('selfStudyHours').textContent || 0} tiết</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Phân bổ các loại giờ</th>
+                                    <th>Lý thuyết</th>
+                                    <th>Thực hành/Thí nghiệm/Thảo luận</th>
+                                    <th>Tự học, tự nghiên cứu</th>
+                                    <th>Tổng (giờ)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td class="bold" colspan="5">Số giờ giảng dạy</td></tr>
+                                <tr><td>Trực diện (tại phòng học)</td><td>${document.getElementById('directTheory').value || 0}</td><td>${document.getElementById('directPractical').value || 0}</td><td>${document.getElementById('directSelfStudy').value || 0}</td><td>${document.getElementById('directTotal').textContent || 0}</td></tr>
+                                <tr><td>Trực tuyến đồng bộ</td><td>${document.getElementById('onlineTheory').value || 0}</td><td>${document.getElementById('onlinePractical').value || 0}</td><td>${document.getElementById('onlineSelfStudy').value || 0}</td><td>${document.getElementById('onlineTotal').textContent || 0}</td></tr>
+                                <tr><td>Trực tuyến không đồng bộ</td><td>${document.getElementById('fieldTheory').value || 0}</td><td>${document.getElementById('fieldPractical').value || 0}</td><td>${document.getElementById('fieldSelfStudy').value || 0}</td><td>${document.getElementById('fieldTotal').textContent || 0}</td></tr>
+                                <tr><td>Đi thực tế, trải nghiệm</td><td>${document.getElementById('lmsGuideTheory').value || 0}</td><td>${document.getElementById('lmsGuidePractical').value || 0}</td><td>${document.getElementById('lmsGuideSelfStudy').value || 0}</td><td>${document.getElementById('lmsGuideTotal').textContent || 0}</td></tr>
+                                <tr class="total-row"><td>Tổng Số giờ giảng dạy</td><td>${document.getElementById('directOnlineTheoryTotal').textContent || 0}</td><td>${document.getElementById('directOnlinePracticalTotal').textContent || 0}</td><td>${document.getElementById('directOnlineSelfStudyTotal').textContent || 0}</td><td>${document.getElementById('directOnlineTotal').textContent || 0}</td></tr>
+                                <tr><td class="bold" colspan="5">Số giờ tự học và khác</td></tr>
+                                <tr><td>Tự học, tự nghiên cứu</td><td>${document.getElementById('selfStudyTheory').value || 0}</td><td>${document.getElementById('selfStudyPractical').value || 0}</td><td>${document.getElementById('selfStudySelfStudy').value || 0}</td><td>${document.getElementById('selfStudyTotal').textContent || 0}</td></tr>
+                                <tr><td>Làm việc nhóm</td><td>${document.getElementById('groupTheory').value || 0}</td><td>${document.getElementById('groupPractical').value || 0}</td><td>${document.getElementById('groupSelfStudy').value || 0}</td><td>${document.getElementById('groupTotal').textContent || 0}</td></tr>
+                                <tr><td>Hoạt động học tập trên LMS</td><td>${document.getElementById('lmsActivityTheory').value || 0}</td><td>${document.getElementById('lmsActivityPractical').value || 0}</td><td>${document.getElementById('lmsActivitySelfStudy').value || 0}</td><td>${document.getElementById('lmsActivityTotal').textContent || 0}</td></tr>
+                                <tr><td>Đi thực tế, trải nghiệm</td><td>${document.getElementById('fieldStudyTheory').value || 0}</td><td>${document.getElementById('fieldStudyPractical').value || 0}</td><td>${document.getElementById('fieldStudySelfStudy').value || 0}</td><td>${document.getElementById('fieldStudyTotal').textContent || 0}</td></tr>
+                                <tr><td>Thực hành</td><td>${document.getElementById('practiceTheory').value || 0}</td><td>${document.getElementById('practicePractical').value || 0}</td><td>${document.getElementById('practiceSelfStudy').value || 0}</td><td>${document.getElementById('practiceTotal').textContent || 0}</td></tr>
+                                <tr><td>Ôn thi, kiểm tra, đánh giá</td><td>${document.getElementById('examTheory').value || 0}</td><td>${document.getElementById('examPractical').value || 0}</td><td>${document.getElementById('examSelfStudy').value || 0}</td><td>${document.getElementById('examTotal').textContent || 0}</td></tr>
+                                <tr><td>Hoạt động khác (ghi rõ)</td><td>${document.getElementById('otherTheory').value || 0}</td><td>${document.getElementById('otherPractical').value || 0}</td><td>${document.getElementById('otherSelfStudy').value || 0}</td><td>${document.getElementById('otherTotal').textContent || 0}</td></tr>
+                                <tr class="total-row"><td>Tổng Số giờ tự học và khác</td><td>${document.getElementById('selfOtherTheoryTotal').textContent || 0}</td><td>${document.getElementById('selfOtherPracticalTotal').textContent || 0}</td><td>${document.getElementById('selfOtherSelfStudyTotal').textContent || 0}</td><td>${document.getElementById('selfOtherTotal').textContent || 0}</td></tr>
+                                <tr class="total-row"><td>Tổng</td><td>${document.getElementById('totalTheory').textContent || 0}</td><td>${document.getElementById('totalPractical').textContent || 0}</td><td>${document.getElementById('totalSelfStudy').textContent || 0}</td><td>${document.getElementById('totalAll').textContent || 0}</td></tr>
+                            </tbody>
+                        </table>
+                    </body>
                 </html>
-            `], { type: 'application/msword' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'Phan_Bo_Cac_Loai_Gio.doc';
-            link.click();
+            `;
+            try {
+                const converted = window.htmlDocx.asBlob(htmlContent);
+                if (converted) {
+                    saveAs(converted, "PhanBoCacLoaiGio.docx");
+                    console.log("Tải file Word thành công!");
+                    alert("File Word đã được tải thành công!");
+                } else {
+                    throw new Error("Không thể tạo file Word.");
+                }
+            } catch (error) {
+                console.error("Lỗi trong hàm downloadWord:", error);
+                alert("Có lỗi xảy ra khi tạo file Word. Vui lòng kiểm tra Console để biết chi tiết: " + error.message);
+            }
         }
-
-        // Initialize totals on page load
-        document.addEventListener('DOMContentLoaded', updateTotals);
+        // Khởi tạo bảng khi tải trang
+        window.onload = updateTable;
     </script>
 </body>
 </html>
